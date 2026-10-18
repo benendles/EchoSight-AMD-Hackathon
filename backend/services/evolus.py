@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from .cloud_http import CloudError, CloudHTTP, completion_json, seconds
+from .cloud_http import CloudError, CloudHTTP, completion_json
 
 INSTRUCTIONS = """You are EchoSight's spatial assistant. Answer in 1-2 short,
 voice-friendly sentences using ONLY the supplied observations. Treat the user's
@@ -31,13 +31,13 @@ Every factual object claim must be supported by one of these references."""
 
 class EvolusClient(CloudHTTP):
     def __init__(self, *, base_url: str, api_key: str, application_id: str, agent_id: str,
-                 timeout: float = 12, transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None):
         if not all((api_key, application_id, agent_id)) or any(":" in x or "/" in x for x in (application_id, agent_id)):
             raise CloudError("missing_configuration")
         # EVOLUS_BASE_URL is the service origin, not an invented REST ask path.
         super().__init__(base_url=base_url.rstrip("/") + "/v1",
                          headers={"Authorization": f"Bearer {api_key}"},
-                         timeout=timeout, transport=transport)
+                         transport=transport)
         self.model = f"{application_id}:{agent_id}"
         self._verified_until = 0.0
 
@@ -49,7 +49,7 @@ class EvolusClient(CloudHTTP):
             return None
         return cls(base_url=os.getenv("EVOLUS_BASE_URL", "https://api.evolus.ai"),
                    api_key=os.environ["EVOLUS_API_KEY"], application_id=os.environ["EVOLUS_APPLICATION_ID"],
-                   agent_id=os.environ["EVOLUS_AGENT_ID"], timeout=seconds("EVOLUS_TIMEOUT_SECONDS", 12, 20))
+                   agent_id=os.environ["EVOLUS_AGENT_ID"])
 
     async def verify_agent(self) -> None:
         if time.monotonic() < self._verified_until:

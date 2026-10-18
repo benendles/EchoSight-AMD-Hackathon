@@ -64,11 +64,16 @@ class AMDTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(CloudError, '^timeout$'):
             await self.client(handler).analyze(image_bytes(), 'describe')
 
-    async def test_total_deadline(self):
+    async def test_slow_response_has_no_client_timeout(self):
         async def handler(request):
             await asyncio.sleep(.2)
-        with self.assertRaisesRegex(CloudError, '^timeout$'):
-            await self.client(handler, timeout=.01).analyze(image_bytes(), 'describe')
+            return httpx.Response(200, json=completion({
+                'summary': 'A blue surface.', 'observations': ['blue surface'], 'uncertainty': []
+            }))
+        client = self.client(handler)
+        self.assertIsNone(client.client.timeout.read)
+        result = await client.analyze(image_bytes(), 'describe')
+        self.assertEqual(result['summary'], 'A blue surface.')
 
     async def test_http_error_sanitized(self):
         with self.assertRaisesRegex(CloudError, '^http_401$'):

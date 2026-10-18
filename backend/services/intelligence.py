@@ -8,7 +8,7 @@ import re
 import time
 
 from .amd_vision import AMDVisionClient
-from .cloud_http import CloudError, seconds
+from .cloud_http import CloudError
 from .evolus import EvolusClient
 from ..sessions import Observation
 
@@ -118,40 +118,31 @@ class Intelligence:
         if navigation_question(question):
             return result
         started = time.monotonic()
-        # One total budget includes queue wait, image preparation, verification,
-        # AMD and Evolus. Cancellation is allowed to propagate to HTTPX.
-        try:
-            async with asyncio.timeout(seconds("ECHOSIGHT_CLOUD_TOTAL_TIMEOUT_SECONDS", 30, 30)):
-                async with self.limit:
-                    if needs_amd(question, observation.scene, upload=upload):
-                        result["cloud"]["amd"] = "disabled"
-                        if self.amd:
-                            try:
-                                result["cloud"]["amd"] = "pending"
-                                result["amd"] = await self.amd.analyze(observation.frame, question)
-                                result["sources"].append("amd")
-                                result["cloud"]["amd"] = "success"
-                            except CloudError as exc:
-                                result["cloud"]["amd"] = str(exc)
-                    result["cloud"]["evolus"] = "disabled"
-                    if self.evolus:
-                        try:
-                            result["cloud"]["evolus"] = "pending"
-                            reply = await self.evolus.answer(question, observation.scene, observation.navigation,
-                                                             result["amd"], source=observation.source, age_seconds=observation.age)
-                            if unsafe_cloud_answer(reply["answer"]) or unsupported_cloud_claim(reply["answer"], observation.scene, result["amd"]):
-                                raise CloudError("unsafe_answer_rejected")
-                            result["answer"] = reply["answer"]
-                            result["evidence"] = reply["evidence"]
-                            result["sources"].append("evolus")
-                            result["cloud"]["evolus"] = "success"
-                        except CloudError as exc:
-                            result["cloud"]["evolus"] = str(exc)
-        except TimeoutError:
-            result["cloud"]["deadline"] = "timeout"
-            for provider in ("amd", "evolus"):
-                if result["cloud"].get(provider) == "pending":
-                    result["cloud"][provider] = "timeout"
+        async with self.limit:
+            if needs_amd(question, observation.scene, upload=upload):
+                result["cloud"]["amd"] = "disabled"
+                if self.amd:
+                    try:
+                        result["cloud"]["amd"] = "pending"
+                        result["amd"] = await self.amd.analyze(observation.frame, question)
+                        result["sources"].append("amd")
+                        result["cloud"]["amd"] = "success"
+                    except CloudError as exc:
+                        result["cloud"]["amd"] = str(exc)
+            result["cloud"]["evolus"] = "disabled"
+            if self.evolus:
+                try:
+                    result["cloud"]["evolus"] = "pending"
+                    reply = await self.evolus.answer(question, observation.scene, observation.navigation,
+                                                     result["amd"], source=observation.source, age_seconds=observation.age)
+                    if unsafe_cloud_answer(reply["answer"]) or unsupported_cloud_claim(reply["answer"], observation.scene, result["amd"]):
+                        raise CloudError("unsafe_answer_rejected")
+                    result["answer"] = reply["answer"]
+                    result["evidence"] = reply["evidence"]
+                    result["sources"].append("evolus")
+                    result["cloud"]["evolus"] = "success"
+                except CloudError as exc:
+                    result["cloud"]["evolus"] = str(exc)
         result["elapsed_ms"] = round((time.monotonic() - started) * 1000, 1)
         # AMD success is visible as evidence but is never silently promoted to
         # an agent answer if Evolus failed. Local descriptions remain the fallback.

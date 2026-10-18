@@ -28,15 +28,14 @@ class CloudError(RuntimeError):
 
 
 class CloudHTTP:
-    def __init__(self, *, base_url: str, headers: dict[str, str], timeout: float,
+    def __init__(self, *, base_url: str, headers: dict[str, str],
                  transport: httpx.AsyncBaseTransport | None = None):
         parsed = urlsplit(base_url)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise CloudError("invalid_configuration")
-        self.timeout = timeout
         self.client = httpx.AsyncClient(
             base_url=base_url.rstrip("/") + "/", headers=headers,
-            timeout=httpx.Timeout(timeout, connect=min(5, timeout)),
+            timeout=None,
             limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
             follow_redirects=False, transport=transport,
         )
@@ -45,14 +44,13 @@ class CloudHTTP:
         started = time.monotonic()
         outcome = "success"
         try:
-            async with asyncio.timeout(self.timeout):
-                response = await self.client.request(method, path, **kwargs)
-                if not response.is_success:
-                    raise CloudError(f"http_{response.status_code}")
-                try:
-                    return response.json(), response.headers
-                except ValueError:
-                    raise CloudError("invalid_json") from None
+            response = await self.client.request(method, path, **kwargs)
+            if not response.is_success:
+                raise CloudError(f"http_{response.status_code}")
+            try:
+                return response.json(), response.headers
+            except ValueError:
+                raise CloudError("invalid_json") from None
         except (TimeoutError, httpx.TimeoutException):
             outcome = "timeout"
             raise CloudError("timeout") from None
