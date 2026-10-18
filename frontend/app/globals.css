@@ -1,6 +1,17 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
 .cloud-status { color: var(--muted); font-size: 0.8rem; padding: 0 20px; }
+.provider-results { grid-column: 1 / -1; padding: 16px; }
+.provider-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.provider-result { min-width: 0; padding: 16px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+.provider-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.provider-title h3 { margin: 0; font-size: 0.95rem; }
+.provider-status, .provider-stale { color: var(--muted); font-size: 0.72rem; text-transform: capitalize; }
+.provider-status.complete { color: var(--accent); }
+.provider-result p { color: #c7cec9; font-size: 0.85rem; line-height: 1.6; }
+.provider-result h4 { margin: 14px 0 6px; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.provider-result ul { margin: 0; padding-left: 18px; color: #c7cec9; font-size: 0.82rem; line-height: 1.6; }
+.provider-empty, .provider-evidence { color: var(--muted) !important; font-size: 0.75rem !important; }
 .question-form { display: grid; gap: 10px; padding: 16px 20px; }
 .question-form label { font-size: 0.85rem; color: var(--muted); }
 .question-form input { min-width: 0; padding: 10px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
@@ -1032,6 +1043,10 @@ button {
   }
 
   .two-column-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-result-grid {
     grid-template-columns: 1fr;
   }
 

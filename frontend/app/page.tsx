@@ -48,9 +48,19 @@ type Navigation = {
   [key: string]: unknown;
 };
 
+type AMDVisionResult = {
+  summary?: string;
+  observations: string[];
+  uncertainty: string[];
+};
+
 type VisionResult = {
   type?: string;
   answer?: string;
+  amd?: AMDVisionResult | null;
+  cloud?: Record<string, string>;
+  evidence?: string[];
+  sources?: string[];
   description?: string;
   scene_description?: string;
   scene?: Detection[];
@@ -58,6 +68,15 @@ type VisionResult = {
   navigation?: Navigation | null;
   result?: string | VisionResult;
   [key: string]: unknown;
+};
+
+type ProviderResults = {
+  observationId: string | null;
+  amdStatus: string;
+  amd: AMDVisionResult;
+  evolusStatus: string;
+  evolusAnswer: string;
+  evolusEvidence: string[];
 };
 
 type ConversationMessage = {
@@ -131,6 +150,8 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("");
+  const [providerResults, setProviderResults] = useState<ProviderResults | null>(null);
+  const [currentObservationId, setCurrentObservationId] = useState<string | null>(null);
 
   const [navigation, setNavigation] = useState<Navigation | null>(null);
 
@@ -243,12 +264,29 @@ export default function Home() {
     const superseded = isCloud && observationId !== latestObservationRef.current;
     if (isCloud) {
       const sources = Array.isArray(result.sources) ? result.sources : [];
+      const cloud: Record<string, unknown> = result.cloud && typeof result.cloud === "object" ? result.cloud : {};
+      const amd: Partial<AMDVisionResult> = result.amd && typeof result.amd === "object" ? result.amd : {};
       setCloudStatus([
         sources.includes("amd") ? "AMD Vision completed" : "AMD Vision unavailable or not requested",
         sources.includes("evolus") ? "Evolus answer completed" : "Using local scene description",
       ].join(" · "));
+      if (!superseded) {
+        setProviderResults({
+          observationId,
+          amdStatus: typeof cloud.amd === "string" ? cloud.amd : sources.includes("amd") ? "success" : "not_requested",
+          amd: {
+            summary: typeof amd.summary === "string" ? amd.summary : undefined,
+            observations: Array.isArray(amd.observations) ? amd.observations.filter((item): item is string => typeof item === "string") : [],
+            uncertainty: Array.isArray(amd.uncertainty) ? amd.uncertainty.filter((item): item is string => typeof item === "string") : [],
+          },
+          evolusStatus: typeof cloud.evolus === "string" ? cloud.evolus : sources.includes("evolus") ? "success" : "not_requested",
+          evolusAnswer: sources.includes("evolus") && typeof result.answer === "string" ? result.answer : "",
+          evolusEvidence: Array.isArray(result.evidence) ? result.evidence.filter((item): item is string => typeof item === "string") : [],
+        });
+      }
     } else if (observationId) {
       latestObservationRef.current = observationId;
+      setCurrentObservationId(observationId);
     }
 
     const objects = Array.isArray(result.scene)
@@ -418,8 +456,10 @@ export default function Home() {
       uploadControllerRef.current?.abort();
       cameraStreamRef.current = stream;
       latestObservationRef.current = null;
+      setCurrentObservationId(null);
       setCameraActive(true);
       setCloudStatus("");
+      setProviderResults(null);
       setNavigation({ action: "CAUTION", message: "Waiting for a recent camera view." });
       setLastMessage("Camera active. Connecting to local vision...");
       const connection = new VisionConnection({
@@ -1041,6 +1081,8 @@ export default function Home() {
       uploadControllerRef.current = controller;
       setIsAnalyzing(true);
       setCloudStatus("");
+      setProviderResults(null);
+      setProviderResults(null);
 
       try {
         const url = URL.createObjectURL(file);
@@ -1093,6 +1135,14 @@ export default function Home() {
         applyVisionResult(rawResult);
         setLastMessage(`${file.name} loaded. Local analysis ready.`);
         setCloudStatus("Additional image analysis in progress...");
+        setProviderResults({
+          observationId: typeof rawResult.observation_id === "string" ? rawResult.observation_id : null,
+          amdStatus: "pending",
+          amd: { observations: [], uncertainty: [] },
+          evolusStatus: "pending",
+          evolusAnswer: "",
+          evolusEvidence: [],
+        });
         // The local result is displayed before optional cloud enrichment starts.
         void apiFetch(BACKEND_URL, "/api/vision/enrich", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -1103,7 +1153,14 @@ export default function Home() {
           const enriched = await response.json();
           if (!controller.signal.aborted && mountedRef.current) applyVisionResult(enriched);
         }).catch(() => {
-          if (!controller.signal.aborted && mountedRef.current) setCloudStatus("Additional analysis unavailable. Local results remain available.");
+          if (!controller.signal.aborted && mountedRef.current) {
+            setCloudStatus("Additional analysis unavailable. Local results remain available.");
+            setProviderResults((current) => current ? {
+              ...current,
+              amdStatus: current.amdStatus === "pending" ? "unavailable" : current.amdStatus,
+              evolusStatus: current.evolusStatus === "pending" ? "unavailable" : current.evolusStatus,
+            } : null);
+          }
         });
       } catch (error) {
         if (controller.signal.aborted || !mountedRef.current) return;
@@ -1162,6 +1219,7 @@ export default function Home() {
       setLastMessage("Image cleared locally. The server observation expires with this session.");
     });
     latestObservationRef.current = null;
+    setCurrentObservationId(null);
     setCloudStatus("");
     if (imageUrlRef.current) {
       URL.revokeObjectURL(imageUrlRef.current);
@@ -1433,6 +1491,68 @@ export default function Home() {
               )}
             </section>
           </div>
+
+          {providerResults && (
+            <section className="card provider-results" aria-live="polite">
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">CLOUD ANALYSIS</p>
+                  <h2>Agent Results</h2>
+                </div>
+                {providerResults.observationId !== currentObservationId && (
+                  <span className="provider-stale">Earlier view</span>
+                )}
+              </div>
+
+              <div className="provider-result-grid">
+                <article className="provider-result">
+                  <div className="provider-title">
+                    <h3>AMD Vision</h3>
+                    <span className={`provider-status ${providerResults.amdStatus === "success" ? "complete" : ""}`}>
+                      {providerResults.amdStatus.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  {providerResults.amd.summary && <p>{providerResults.amd.summary}</p>}
+                  {providerResults.amd.observations.length > 0 && (
+                    <>
+                      <h4>Visual observations</h4>
+                      <ul>{providerResults.amd.observations.map((item, index) => <li key={`amd-observation-${index}`}>{item}</li>)}</ul>
+                    </>
+                  )}
+                  {providerResults.amd.uncertainty.length > 0 && (
+                    <>
+                      <h4>Uncertainty</h4>
+                      <ul>{providerResults.amd.uncertainty.map((item, index) => <li key={`amd-uncertainty-${index}`}>{item}</li>)}</ul>
+                    </>
+                  )}
+                  {!providerResults.amd.summary && providerResults.amd.observations.length === 0 && providerResults.amdStatus !== "pending" && (
+                    <p className="provider-empty">No AMD vision result was returned.</p>
+                  )}
+                </article>
+
+                <article className="provider-result">
+                  <div className="provider-title">
+                    <h3>Evolus Agent</h3>
+                    <span className={`provider-status ${providerResults.evolusStatus === "success" ? "complete" : ""}`}>
+                      {providerResults.evolusStatus.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  {providerResults.evolusAnswer ? (
+                    <p>{providerResults.evolusAnswer}</p>
+                  ) : (
+                    <p className="provider-empty">
+                      {providerResults.evolusStatus === "pending"
+                        ? "Waiting for the agent response."
+                        : "No Evolus agent answer was returned."}
+                    </p>
+                  )}
+                  {providerResults.evolusEvidence.length > 0 && (
+                    <p className="provider-evidence">Evidence: {providerResults.evolusEvidence.join(", ")}</p>
+                  )}
+                </article>
+              </div>
+            </section>
+          )}
 
           {/* ==================================================
               UPLOAD

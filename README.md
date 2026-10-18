@@ -10,7 +10,7 @@ EchoSight is an assistive-vision prototype for blind and low-vision people. It t
 2. Local YOLO11 object detection and Depth Anything V2 relative-depth estimation produce scene observations.
 3. A local navigation policy prioritizes potential obstacles and issues cautious `STOP`, `CAUTION`, or `CONTINUE` messages. Missing depth results in more cautious guidance.
 4. When a person asks for a detailed description, optional AMD-hosted vision adds observations. An optional Evolus agent combines those observations with the local scene to answer in short, accessible language.
-5. The web app presents the answer and supports voice interaction through the existing AssemblyAI integration. Local results remain available when a cloud service is disabled or unavailable.
+5. The web app shows AMD's visual observations and the Evolus agent's answer side by side, including each provider's status and any reported uncertainty or evidence. It also supports voice interaction through the existing AssemblyAI integration. Local results remain available when a cloud service is disabled or unavailable.
 
 Local obstacle handling does not wait for the AMD or Evolus services. User requests, image age, and local warnings determine whether cloud enrichment is appropriate; cloud answers cannot override local navigation warnings.
 
