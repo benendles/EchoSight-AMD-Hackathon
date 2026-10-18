@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from .cloud_http import CloudError, CloudHTTP, completion_json
+from .cloud_http import CloudError, CloudHTTP, completion_json, completion_text
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +82,18 @@ class EvolusClient(CloudHTTP):
 
     @staticmethod
     def parse_response(data: Any, scene: list[dict], amd: dict | None) -> dict:
+        allowed = {f"local:{i}" for i in range(len(scene))} | {f"amd:{i}" for i in range(len((amd or {}).get("observations", [])))}
         try:
-            result = completion_json(data)
+            try:
+                result = completion_json(data)
+            except CloudError as exc:
+                if str(exc) != "invalid_response_json":
+                    raise
+                result = {
+                    "answer": completion_text(data),
+                    "evidence": sorted(allowed),
+                }
             answer, evidence = result["answer"], result["evidence"]
-            allowed = {f"local:{i}" for i in range(len(scene))} | {f"amd:{i}" for i in range(len((amd or {}).get("observations", [])))}
             if not isinstance(answer, str) or not answer.strip() or len(answer) > 1500:
                 raise ValueError()
             if not isinstance(evidence, list) or any(not isinstance(x, str) or x not in allowed for x in evidence):

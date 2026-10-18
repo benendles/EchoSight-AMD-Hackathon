@@ -166,9 +166,20 @@ class EvolusTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(CloudError):
             EvolusClient.parse_response(completion({'answer': 'A doorway.', 'evidence': []}), [], None)
 
-    async def test_non_json_answer_rejected(self):
-        with self.assertRaises(CloudError):
-            EvolusClient.parse_response({'choices': [{'message': {'content': 'Unsupported prose'}}]}, self.scene, None)
+    async def test_plain_text_answer_uses_supplied_observations_as_evidence(self):
+        result = EvolusClient.parse_response(
+            {'choices': [{'message': {'content': 'A person is visible.'}, 'finish_reason': 'stop'}]},
+            self.scene, None,
+        )
+        self.assertEqual(result['answer'], 'A person is visible.')
+        self.assertEqual(result['evidence'], ['local:0'])
+
+    async def test_plain_text_answer_without_observations_is_rejected(self):
+        with self.assertRaisesRegex(CloudError, 'invalid_grounding'):
+            EvolusClient.parse_response(
+                {'choices': [{'message': {'content': 'Unsupported prose'}, 'finish_reason': 'stop'}]},
+                [], None,
+            )
 
     async def test_single_json_fence_accepted(self):
         text = '```json\n' + json.dumps({'answer': 'A person is ahead.', 'evidence': ['local:0']}) + '\n```'
