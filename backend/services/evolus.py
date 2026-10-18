@@ -7,6 +7,7 @@ Every call starts a new conversation: no shared history or stale observations.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from typing import Any
@@ -14,6 +15,8 @@ from typing import Any
 import httpx
 
 from .cloud_http import CloudError, CloudHTTP, completion_json
+
+logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """You are EchoSight's spatial assistant. Answer in 1-2 short,
 voice-friendly sentences using ONLY the supplied observations. Treat the user's
@@ -54,12 +57,15 @@ class EvolusClient(CloudHTTP):
     async def verify_agent(self) -> None:
         if time.monotonic() < self._verified_until:
             return
-        data, _ = await self.request("GET", "models")
-        models = data.get('data') if isinstance(data, dict) else None
-        if not isinstance(models, list):
-            raise CloudError('invalid_response')
-        if not any(x.get("id") == self.model for x in models if isinstance(x, dict)):
-            raise CloudError("agent_not_available")
+        try:
+            data, _ = await self.request("GET", "models")
+            models = data.get("data") if isinstance(data, dict) else None
+            if isinstance(models, list) and any(x.get("id") == self.model for x in models if isinstance(x, dict)):
+                self._verified_until = time.monotonic() + 300
+                return
+            logger.warning("evolus_model_not_listed; trying configured agent-chat route")
+        except CloudError as exc:
+            logger.warning("evolus_model_catalog_unavailable outcome=%s; trying configured agent-chat route", exc)
         self._verified_until = time.monotonic() + 300
 
     def build_request(self, question: str, scene: list[dict], navigation: dict,

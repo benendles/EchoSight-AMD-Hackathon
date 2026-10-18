@@ -110,11 +110,11 @@ class EvolusTests(unittest.IsolatedAsyncioTestCase):
     async def test_request_construction_and_response(self):
         calls = []
         def handler(request):
-            calls.append(request)
+            calls.append(request.url.path)
             self.assertEqual(request.headers['authorization'], 'Bearer evolus-secret')
             self.assertNotIn('X-Conversation-Id', request.headers)
-            if request.url.path.endswith('/models'):
-                return httpx.Response(200, json={'data': [{'id': 'application-A:agent-B'}]})
+            if request.url.path == '/v1/models':
+                return httpx.Response(200, json={'data': [{'id': 'catalog-format-differs'}]})
             self.assertEqual(request.url.path, '/v1/chat/completions')
             payload = json.loads(request.content)
             self.assertEqual(payload['model'], 'application-A:agent-B')
@@ -126,17 +126,28 @@ class EvolusTests(unittest.IsolatedAsyncioTestCase):
         result = await client.answer('What is ahead?', self.scene, {'action': 'CAUTION'})
         self.assertEqual(result['evidence'], ['local:0'])
         await client.answer('What is ahead?', self.scene, {'action': 'CAUTION'})
-        self.assertEqual(len(calls), 3)  # discovery cached, conversation history never reused
+        self.assertEqual(calls, ['/v1/models', '/v1/chat/completions', '/v1/chat/completions'])
 
-    async def test_wrong_agent_fails_closed(self):
-        client = self.client(lambda r: httpx.Response(200, json={'data': [{'id': 'application-A:OTHER'}]}))
-        with self.assertRaisesRegex(CloudError, 'agent_not_available'):
+    async def test_chat_endpoint_is_authoritative_for_agent_availability(self):
+        calls = []
+        def handler(request):
+            calls.append(request.url.path)
+            if request.url.path == '/v1/models':
+                return httpx.Response(200, json={'data': None})
+            if request.url.path == '/v1/chat/completions':
+                return httpx.Response(200, json=completion({
+                    'answer': 'A person is ahead.', 'evidence': ['local:0']
+                }))
+            return httpx.Response(500)
+        client = self.client(handler)
+        result = await client.answer('What is ahead?', self.scene, {'action': 'CAUTION'})
+        self.assertEqual(result['answer'], 'A person is ahead.')
+        self.assertEqual(calls, ['/v1/models', '/v1/chat/completions'])
+
+    async def test_unavailable_agent_reports_chat_endpoint_error(self):
+        client = self.client(lambda r: httpx.Response(404))
+        with self.assertRaisesRegex(CloudError, '^http_404$'):
             await client.answer('Describe', [], {})
-
-    async def test_malformed_catalog_fails_closed(self):
-        client = self.client(lambda r: httpx.Response(200, json={'data': None}))
-        with self.assertRaisesRegex(CloudError, 'invalid_response'):
-            await client.verify_agent()
 
     async def test_agent_and_application_are_distinct(self):
         client = self.client(lambda r: None)
@@ -166,4 +177,6 @@ class EvolusTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_credential_free_errors(self):
         with self.assertRaisesRegex(CloudError, '^http_429$'):
-            await self.client(lambda r: httpx.Response(429, text='evolus-secret')).verify_agent()
+            await self.client(lambda r: httpx.Response(429, text='evolus-secret')).answer(
+                'Describe', self.scene, {}
+            )
