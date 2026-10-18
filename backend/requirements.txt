@@ -1,0 +1,37 @@
+# EchoSight backend Python dependencies
+# Core web framework
+fastapi
+uvicorn
+
+# Environment / config
+python-dotenv
+
+# Image handling
+Pillow
+
+# Form/file uploads for FastAPI
+python-multipart
+
+# Vision / ML (YOLO + Depth Anything V2)
+ultralytics
+# Railway uses the headless build in the build command because the API does not
+# need OpenCV GUI libraries such as libxcb.
+torch
+transformers
+numpy
+
+# Realtime voice agent networking
+websockets
+certifi
+
+# PyAudio is intentionally not installed on Railway. The deployed frontend
+# captures microphone audio in the browser and the backend only creates the
+# temporary AssemblyAI token.
+
+# Optional helpers
+typing-inspection
+
+# Note: Installing 'torch' on macOS may require platform-specific wheels
+# (e.g., for MPS/arm64). See https://pytorch.org for install instructions.
+# HTTP client for AMD Token Factory and Evolus APIs
+httpx
